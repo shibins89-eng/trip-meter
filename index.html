@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B7A75">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Trip Meter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: one phone-width column. Big odometer on top, controls in thumb reach, trip history below. */
+:root {
+  --bg: #EEF2F4;
+  --surface: #FFFFFF;
+  --fg: #10252B;
+  --muted: #566D74;
+  --line: #D3DEE2;
+  --accent: #0B7A75;
+  --accent-fg: #FFFFFF;
+  --stop: #B83227;
+  --stop-fg: #FFFFFF;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0C1A1E;
+    --surface: #132A30;
+    --fg: #E6F1F2;
+    --muted: #8FA9AF;
+    --line: #234049;
+    --accent: #3CC5BC;
+    --accent-fg: #062326;
+    --stop: #FF7A6B;
+    --stop-fg: #2A0A06;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.4;
+  min-height: 100vh;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; margin: 0; text-transform: uppercase; }
+.gps { font-size: 13px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.gps i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.gps.good i { background: var(--accent); }
+.gps.weak i { background: var(--stop); }
+
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.modes button {
+  font: inherit; font-weight: 600; font-size: 16px; padding: 12px 8px; min-height: 48px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 10px; cursor: pointer;
+}
+.modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.modes button:disabled { opacity: 0.55; cursor: default; }
+
+.meter { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 18px 8px; }
+.odo { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+.odo b { font-family: var(--font-display); font-weight: 700; font-size: clamp(76px, 26vw, 112px); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.odo span { font-family: var(--font-display); font-weight: 600; font-size: 28px; color: var(--muted); }
+.lane { border: 0; border-top: 3px dashed var(--line); margin: 14px 0 12px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-bottom: 12px; }
+.stat { min-width: 0; text-align: center; }
+.stat b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat small { display: block; color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+.msg { min-height: 22px; margin: 0; text-align: center; color: var(--muted); font-size: 15px; }
+.msg.err { color: var(--stop); font-weight: 600; }
+
+.controls { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.controls button { font: inherit; font-weight: 700; font-size: 20px; min-height: 60px; border-radius: 14px; border: 0; cursor: pointer; }
+.btn-main { grid-column: 1 / -1; background: var(--accent); color: var(--accent-fg); }
+.btn-pause { background: var(--surface); color: var(--fg); border: 1px solid var(--line) !important; }
+.btn-stop { background: var(--stop); color: var(--stop-fg); }
+button:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; text-transform: uppercase; letter-spacing: 0.04em; margin: 8px 0 0; }
+.totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.total { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; text-align: center; min-width: 0; }
+.total b { display: block; font-family: var(--font-display); font-size: 24px; font-variant-numeric: tabular-nums; }
+.total small { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+
+ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+li .main { min-width: 0; }
+li .big { font-family: var(--font-display); font-weight: 700; font-size: 24px; font-variant-numeric: tabular-nums; }
+li .sub { color: var(--muted); font-size: 14px; }
+li button, .link-btn { font: inherit; font-size: 14px; font-weight: 600; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-height: 40px; cursor: pointer; }
+.empty { color: var(--muted); text-align: center; padding: 18px 8px; border: 1px dashed var(--line); border-radius: 12px; margin: 0; }
+.foot { display: flex; justify-content: center; }
+.note { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
+@media (prefers-reduced-motion: no-preference) { .gps i { transition: background 0.3s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Trip Meter</h1>
+    <div class="gps" id="gps"><i></i><span id="gpsText">GPS off</span></div>
+  </header>
+
+  <div class="modes" role="group" aria-label="Trip type">
+    <button type="button" id="m-walk" data-mode="walk" aria-pressed="true">Walk</button>
+    <button type="button" id="m-run" data-mode="run" aria-pressed="false">Run</button>
+    <button type="button" id="m-car" data-mode="car" aria-pressed="false">Car</button>
+  </div>
+
+  <section class="meter" aria-label="Current trip">
+    <div class="odo"><b id="dist">0.00</b><span>km</span></div>
+    <hr class="lane">
+    <div class="stats">
+      <div class="stat"><b id="time">00:00</b><small>Time</small></div>
+      <div class="stat"><b id="speed">0.0</b><small id="speedLabel">km/h</small></div>
+      <div class="stat"><b id="line">0.00</b><small>Straight km</small></div>
+    </div>
+  </section>
+
+  <p class="msg" id="msg">Choose walk, run or car. Press Start at point A.</p>
+
+  <div class="controls" id="controls">
+    <button type="button" class="btn-main" id="btnMain">Start</button>
+    <button type="button" class="btn-pause" id="btnPause" hidden>Pause</button>
+    <button type="button" class="btn-stop" id="btnStop" hidden>Stop at point B</button>
+  </div>
+
+  <h2>Total distance</h2>
+  <div class="totals">
+    <div class="total"><b id="t-walk">0.0</b><small>Walk km</small></div>
+    <div class="total"><b id="t-run">0.0</b><small>Run km</small></div>
+    <div class="total"><b id="t-car">0.0</b><small>Car km</small></div>
+  </div>
+
+  <h2>My trips</h2>
+  <ul id="history"></ul>
+  <div class="foot"><button type="button" class="link-btn" id="clearAll" hidden>Delete all trips</button></div>
+  <p class="note">Keep the screen on and allow location. Distance follows your real path, so it can be longer than the straight line.</p>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var MODES = {
+    walk: { label: "Walk", maxAcc: 25, minStep: 3, maxSpeed: 6 },
+    run:  { label: "Run",  maxAcc: 25, minStep: 3, maxSpeed: 12 },
+    car:  { label: "Car",  maxAcc: 40, minStep: 6, maxSpeed: 70 }
+  };
+  var KEY = "tripmeter.trips.v1";
+  var s = blank();
+  s.mode = "walk";
+  var trips = loadTrips();
+  var armClear = false;
+
+  function blank() {
+    return { status: "idle", mode: s ? s.mode : "walk", dist: 0, acc: 0, since: 0, last: null, start: null, cur: null, watch: null, wake: null, startedAt: 0 };
+  }
+
+  function loadTrips() {
+    try { var v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function saveTrips() {
+    try { localStorage.setItem(KEY, JSON.stringify(trips)); } catch (e) { /* storage blocked */ }
+  }
+
+  function hav(a, b) {
+    var R = 6371000, rad = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+  function elapsed() {
+    return s.acc + (s.status === "tracking" ? Date.now() - s.since : 0);
+  }
+  function fmtTime(ms) {
+    var t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+    var p = function (n) { return n < 10 ? "0" + n : "" + n; };
+    return h > 0 ? h + ":" + p(m) + ":" + p(sec) : p(m) + ":" + p(sec);
+  }
+  function km(m) { return (m / 1000).toFixed(2); }
+
+  function setMsg(text, isErr) {
+    var el = $("msg");
+    el.textContent = text;
+    el.className = "msg" + (isErr ? " err" : "");
+  }
+  function setGps(kind, text) {
+    $("gps").className = "gps" + (kind ? " " + kind : "");
+    $("gpsText").textContent = text;
+  }
+
+  function render() {
+    var ms = elapsed();
+    $("dist").textContent = km(s.dist);
+    $("time").textContent = fmtTime(ms);
+    var hrs = ms / 3600000;
+    if (s.mode === "run") {
+      $("speedLabel").textContent = "min/km";
+      if (s.dist > 20 && ms > 0) {
+        var pace = (ms / 60000) / (s.dist / 1000);
+        var pm = Math.floor(pace), ps = Math.round((pace - pm) * 60);
+        if (ps === 60) { pm += 1; ps = 0; }
+        $("speed").textContent = pm + ":" + (ps < 10 ? "0" + ps : ps);
+      } else { $("speed").textContent = "0:00"; }
+    } else {
+      $("speedLabel").textContent = "km/h";
+      $("speed").textContent = hrs > 0 && s.dist > 0 ? ((s.dist / 1000) / hrs).toFixed(1) : "0.0";
+    }
+    $("line").textContent = s.start && s.cur ? km(hav(s.start, s.cur)) : "0.00";
+
+    var idle = s.status === "idle";
+    $("btnMain").hidden = !idle;
+    $("btnPause").hidden = idle;
+    $("btnStop").hidden = idle;
+    $("btnPause").textContent = s.status === "paused" ? "Resume" : "Pause";
+    $("btnMain").textContent = s.dist > 0 ? "Start new trip" : "Start";
+    ["walk", "run", "car"].forEach(function (k) {
+      var b = $("m-" + k);
+      b.setAttribute("aria-pressed", s.mode === k ? "true" : "false");
+      b.disabled = !idle;
+    });
+  }
+
+  function renderHistory() {
+    var ul = $("history");
+    var tot = { walk: 0, run: 0, car: 0 };
+    trips.forEach(function (t) { if (tot[t.mode] !== undefined) tot[t.mode] += t.dist; });
+    $("t-walk").textContent = (tot.walk / 1000).toFixed(1);
+    $("t-run").textContent = (tot.run / 1000).toFixed(1);
+    $("t-car").textContent = (tot.car / 1000).toFixed(1);
+    $("clearAll").hidden = trips.length === 0;
+    $("clearAll").textContent = armClear ? "Tap again to delete all" : "Delete all trips";
+    if (trips.length === 0) {
+      ul.innerHTML = '<li class="empty-li" style="display:block;padding:0;border:0;background:none"><p class="empty">No trips yet. Your finished trips will show here.</p></li>';
+      return;
+    }
+    ul.innerHTML = trips.slice(0, 30).map(function (t) {
+      var when = new Date(t.at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      var label = MODES[t.mode] ? MODES[t.mode].label : "Trip";
+      var avg = t.ms > 0 ? ((t.dist / 1000) / (t.ms / 3600000)).toFixed(1) : "0.0";
+      return '<li><div class="main"><div class="big">' + km(t.dist) + ' km</div>' +
+             '<div class="sub">' + label + ' · ' + fmtTime(t.ms) + ' · ' + avg + ' km/h</div>' +
+             '<div class="sub">' + when + '</div></div>' +
+             '<button type="button" data-del="' + Number(t.id) + '">Delete</button></li>';
+    }).join("");
+  }
+
+  function onPos(p) {
+    var c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy || 0, t: p.timestamp || Date.now() };
+    s.cur = c;
+    var m = MODES[s.mode];
+    var good = c.acc <= m.maxAcc;
+    setGps(good ? "good" : "weak", good ? "GPS good ±" + Math.round(c.acc) + " m" : "Weak GPS ±" + Math.round(c.acc) + " m");
+    if (s.status !== "tracking" || !good) { render(); return; }
+    if (!s.start) s.start = c;
+    if (!s.last) { s.last = c; render(); return; }
+    var d = hav(s.last, c);
+    var dt = (c.t - s.last.t) / 1000;
+    if (d < m.minStep) { render(); return; }
+    if (dt > 0 && d / dt > m.maxSpeed) { render(); return; }
+    s.dist += d;
+    s.last = c;
+    render();
+  }
+  function onErr(e) {
+    var text = "Could not get your location.";
+    if (e && e.code === 1) text = "Location is blocked. Allow location for this page in your browser settings, then try again.";
+    else if (e && e.code === 2) text = "No GPS signal. Go outside or near a window.";
+    else if (e && e.code === 3) text = "GPS is slow. Please wait or move to open sky.";
+    setGps("weak", "No GPS");
+    setMsg(text, true);
+  }
+
+  function lockScreen() {
+    try {
+      if (navigator.wakeLock && navigator.wakeLock.request) {
+        navigator.wakeLock.request("screen").then(function (l) { s.wake = l; }, function () {});
+      }
+    } catch (e) { /* not supported */ }
+  }
+  function unlockScreen() {
+    try { if (s.wake) { s.wake.release(); s.wake = null; } } catch (e) {}
+  }
+
+  function start() {
+    if (!("geolocation" in navigator)) { setMsg("This browser has no GPS support.", true); return; }
+    if (window.isSecureContext === false) { setMsg("GPS needs a secure (https) link. Open this app from an https address.", true); return; }
+    var mode = s.mode;
+    s = blank();
+    s.mode = mode;
+    s.status = "tracking";
+    s.since = Date.now();
+    s.startedAt = Date.now();
+    setMsg("Recording. Walk, run or drive to point B.");
+    setGps("", "Finding GPS…");
+    s.watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    lockScreen();
+    render();
+  }
+  function pause() {
+    if (s.status === "tracking") {
+      s.acc += Date.now() - s.since;
+      s.status = "paused";
+      setMsg("Paused. Distance is not counted.");
+    } else if (s.status === "paused") {
+      s.since = Date.now();
+      s.last = null;
+      s.status = "tracking";
+      setMsg("Recording.");
+    }
+    render();
+  }
+  function stop() {
+    if (s.status === "idle") return;
+    var ms = elapsed();
+    if (s.watch !== null) navigator.geolocation.clearWatch(s.watch);
+    s.watch = null;
+    unlockScreen();
+    s.acc = ms;
+    s.status = "idle";
+    if (s.dist >= 10) {
+      trips.unshift({ id: Date.now(), at: s.startedAt, mode: s.mode, dist: s.dist, ms: ms });
+      saveTrips();
+      setMsg("Saved: " + km(s.dist) + " km in " + fmtTime(ms) + ".");
+    } else {
+      setMsg("Trip was too short, so it was not saved.");
+      s.dist = 0;
+    }
+    setGps("", "GPS off");
+    renderHistory();
+    render();
+  }
+
+  $("btnMain").addEventListener("click", start);
+  $("btnPause").addEventListener("click", pause);
+  $("btnStop").addEventListener("click", stop);
+  ["walk", "run", "car"].forEach(function (k) {
+    $("m-" + k).addEventListener("click", function () {
+      if (s.status !== "idle") return;
+      s = blank();
+      s.mode = k;
+      setMsg("Press Start at point A.");
+      render();
+    });
+  });
+  $("history").addEventListener("click", function (e) {
+    var id = e.target && e.target.getAttribute && e.target.getAttribute("data-del");
+    if (!id) return;
+    trips = trips.filter(function (t) { return String(t.id) !== String(id); });
+    saveTrips();
+    renderHistory();
+  });
+  $("clearAll").addEventListener("click", function () {
+    if (!armClear) {
+      armClear = true;
+      renderHistory();
+      setTimeout(function () { armClear = false; renderHistory(); }, 4000);
+      return;
+    }
+    armClear = false;
+    trips = [];
+    saveTrips();
+    renderHistory();
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && s.status === "tracking") lockScreen();
+  });
+
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+
+  setInterval(function () { if (s.status === "tracking") render(); }, 1000);
+  renderHistory();
+  render();
+})();
+</script>
+</body>
+</html>

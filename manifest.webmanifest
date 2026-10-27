@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Trip Meter",
+  "short_name": "Trip Meter",
+  "description": "Measure walk, run and car distance from point A to point B with GPS.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0C1A1E",
+  "theme_color": "#0B7A75",
+  "categories": ["navigation", "fitness", "utilities"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
